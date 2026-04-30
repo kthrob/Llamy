@@ -66,6 +66,92 @@ Other tasks or external requirements this depends on.
 
 ---
 
+### [PLANNED] Docker/OrbStack variant of Open WebUI launcher (#LLAMY-2)
+
+- **ID**: LLAMY-2
+- **Type**: feature
+- **Priority**: low
+- **Effort**: medium
+- **Added**: 2026-04-30
+- **Updated**: 2026-04-30
+- **Author**: agent
+
+#### Problem / Motivation
+
+The current stack runs Open WebUI via `uvx open-webui@latest`. This works but has practical friction:
+
+- The cached version is frozen until manually re-warmed (`uvx --python 3.11 --with pip open-webui@latest --help`)
+- Environment variables must be threaded through fish list expansion into `env`, which is fragile (we had to fall back to editing the sqlite3 DB directly during ElevenLabs setup)
+- No standard `.env` file support — secrets need the bespoke `~/.config/llamy/` credential file approach
+- `--offline` makes the package manager offline, not the app — the distinction confuses troubleshooting
+- There is no pinned version; `@latest` can silently break between runs
+
+Open WebUI's official deployment target is Docker. OrbStack is already installed by `setup.fish`. A Docker-based variant would eliminate most of the above friction.
+
+#### Proposed Solution
+
+**Research first, implement second.** Before writing any code, evaluate the Docker approach against the current uvx approach across the dimensions below. If the tradeoffs favour Docker, implement `llamy-docker.fish` as a parallel variant that can be tested side-by-side with the existing `llamy.fish`. Do not replace `llamy.fish` until the Docker variant is validated.
+
+The Docker variant would:
+- Pull `ghcr.io/open-webui/open-webui:main` (or a pinned tag)
+- Run the container via OrbStack's `docker` CLI
+- Mount `~/.open-webui` as the data volume (same path as today — DB and uploads are preserved)
+- Pass ElevenLabs and other secrets via a `~/.config/llamy/.env` file (natively supported by `docker run --env-file`)
+- Connect to the host Ollama instance via `host.docker.internal:11434` or OrbStack's host networking
+
+#### Research Questions (answer before implementing)
+
+These must be answered by reading OrbStack and Open WebUI documentation, and by running small experiments, before writing `llamy-docker.fish`:
+
+1. **Cold start time.** How long does `docker run ghcr.io/open-webui/open-webui` take to be ready vs the current uvx path? Is the difference noticeable in practice?
+
+2. **Image size.** The Open WebUI Docker image is ~2 GB. Is this a one-time cost or does it balloon on updates? How does OrbStack manage image storage on macOS?
+
+3. **Ollama connectivity.** OrbStack containers can reach the host via `host.docker.internal`. Does Open WebUI's `OLLAMA_BASE_URL=http://host.docker.internal:11434` work reliably, or does OrbStack's networking require a different approach?
+
+4. **Data persistence.** Confirm that mounting `~/.open-webui:/app/backend/data` preserves the existing sqlite DB, uploaded files, and vector DB — so switching from uvx to Docker doesn't lose any settings or chat history.
+
+5. **`.env` file handling.** Does `docker run --env-file ~/.config/llamy/.env` handle the ElevenLabs credentials correctly? Confirm the key names (`AUDIO_TTS_ENGINE`, `AUDIO_TTS_API_KEY`, etc.) are the same in the Docker image as in the uvx-run version.
+
+6. **Pinned vs latest.** Should the variant track `:main` (rolling), `:latest` (stable releases), or a pinned tag? What is the update workflow for each?
+
+7. **OrbStack-specific behaviour.** Does OrbStack expose a `docker` binary that works identically to Docker Desktop's CLI? Are there any OrbStack-specific flags or config needed? Does `orb` CLI offer anything useful here (e.g., `orb run`)?
+
+8. **GPU/Metal acceleration.** The uvx approach runs natively on macOS and can use Metal. Does the Docker container get any GPU access through OrbStack, or does it run CPU-only? What is the performance difference for inference if Ollama is the backend (it runs on the host regardless)?
+
+9. **Stop/restart behaviour.** How does `docker stop` compare to `kill $pid` in terms of graceful shutdown? Does Open WebUI need a graceful stop to flush its DB?
+
+10. **Coexistence.** Can both `llamy` (uvx) and `llamy-docker` run concurrently for comparison, or do they conflict on port 8080 / the data directory?
+
+#### Implementation Notes (for after research is complete)
+
+- Implement as `llamy-docker.fish`, installed alongside `llamy.fish` — not as a replacement
+- Use the same `~/.config/llamy/` config directory and the same `~/.open-webui/` data directory
+- Use `~/.config/llamy/.env` for all secrets passed to the container (already gitignored via `.env.*` in `.gitignore`)
+- Keep `llamy-docker` command surface identical to `llamy` where possible (`--stop`, `--logs`, `--help`) so it can be compared without re-learning
+- The `--logs` command should tail the container log: `docker logs -f open-webui`
+- `--stop` should run `docker stop open-webui && docker rm open-webui`
+- Update `setup.fish` to optionally install the Docker variant alongside the uvx one
+- Update README with a side-by-side comparison table once both variants exist
+
+#### Acceptance Criteria
+
+- [ ] All research questions above answered and documented in this task before any code is written
+- [ ] `llamy-docker.fish` installed and working alongside `llamy.fish` without conflicts
+- [ ] ElevenLabs TTS works via `--env-file` with no sqlite3 workarounds needed
+- [ ] `~/.open-webui/` data (DB, uploads) is preserved when switching between variants
+- [ ] `llamy-docker --stop/--logs/--help` work correctly
+- [ ] Cold start time and image size documented in the task for future reference
+- [ ] README updated with comparison table and Docker setup instructions
+
+#### Dependencies
+
+- OrbStack must be installed (already ensured by `setup.fish`)
+- Research questions must be answered before implementation begins
+- Consider doing this after LLAMY-1 (llmfit) to avoid two large parallel work streams
+
+---
+
 ### [PLANNED] Integrate llmfit for per-model scoring in model pickers (#LLAMY-1)
 
 - **ID**: LLAMY-1
