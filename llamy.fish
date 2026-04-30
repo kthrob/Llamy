@@ -20,6 +20,7 @@ function llamy --description "Start Ollama + Open WebUI in the background"
     set OLLAMA_LOG      "$LOG_DIR/llamy-ollama.log"
     set WEBUI_LOG       "$LOG_DIR/llamy-webui.log"
     set PID_FILE        "$LOG_DIR/llamy.pids"
+    set OLLAMA_OWNED    "$LOG_DIR/llamy.ollama_owned"
     set WEBUI_URL       "http://localhost:8080"
 
     # ── helpers ────────────────────────────────────────────────────────────
@@ -28,7 +29,7 @@ function llamy --description "Start Ollama + Open WebUI in the background"
         echo (set_color cyan)"[llamy]"(set_color normal) $argv
     end
     function _llamy_ok
-        echo (set_color green)"[llamy]"(set_color normal) $argv
+        echo (set_color green)"[llamy] ✓"(set_color normal) $argv
     end
     function _llamy_err
         echo (set_color red)"[llamy]"(set_color normal) $argv >&2
@@ -58,6 +59,18 @@ function llamy --description "Start Ollama + Open WebUI in the background"
         end
     end
 
+    function _llamy_wait_for_ollama
+        set _attempts 0
+        while test $_attempts -lt 10
+            if curl -sf "http://localhost:11434" > /dev/null 2>&1
+                return 0
+            end
+            sleep 1
+            set _attempts (math $_attempts + 1)
+        end
+        return 1
+    end
+
     function _llamy_local_models
         set _started_ollama 0
         if not pgrep -x ollama > /dev/null
@@ -65,7 +78,11 @@ function llamy --description "Start Ollama + Open WebUI in the background"
             ollama serve > /dev/null 2>&1 &
             set _tmp_ollama_pid $last_pid
             set _started_ollama 1
-            sleep 2
+            if not _llamy_wait_for_ollama
+                _llamy_err "Ollama did not respond in time."
+                kill $_tmp_ollama_pid 2>/dev/null
+                return 1
+            end
         end
 
         set models (ollama list 2>/dev/null | tail -n +2 | awk '{print $1}')
@@ -86,7 +103,11 @@ function llamy --description "Start Ollama + Open WebUI in the background"
             ollama serve > /dev/null 2>&1 &
             set _tmp_ollama_pid $last_pid
             set _started_ollama 1
-            sleep 2
+            if not _llamy_wait_for_ollama
+                _llamy_err "Ollama did not respond in time."
+                kill $_tmp_ollama_pid 2>/dev/null
+                return 1
+            end
         end
 
         ollama pull $model_name
@@ -371,6 +392,16 @@ function llamy --description "Start Ollama + Open WebUI in the background"
             end
         end
         rm -f $PID_FILE
+
+        # If Ollama was already running when llamy started, llamy did not manage it
+        # and will not stop it — inform the user.
+        if not test -f $OLLAMA_OWNED
+            _llamy_info "Note: Ollama was already running when llamy started and was not stopped."
+            _llamy_info "      To stop it manually: killall ollama"
+        else
+            rm -f $OLLAMA_OWNED
+        end
+
         return 0
     end
 
@@ -426,16 +457,23 @@ function llamy --description "Start Ollama + Open WebUI in the background"
     end
 
     mkdir -p $LOG_DIR
+    rm -f $OLLAMA_OWNED
 
     # 1. Start ollama serve if not already up
     if not pgrep -x ollama > /dev/null
         _llamy_info "Starting Ollama server..."
         ollama serve >> $OLLAMA_LOG 2>&1 &
         set ollama_pid $last_pid
-        sleep 2
+        if not _llamy_wait_for_ollama
+            _llamy_err "Ollama did not respond after 10 s — check: $OLLAMA_LOG"
+            return 1
+        end
+        # Mark that llamy owns this Ollama process (so --stop knows to kill it)
+        echo $ollama_pid > $OLLAMA_OWNED
     else
         _llamy_info "Ollama already running."
         set ollama_pid ""
+        rm -f $OLLAMA_OWNED
     end
 
     # 2. Pull the model (idempotent)

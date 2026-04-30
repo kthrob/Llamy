@@ -27,7 +27,7 @@ Everything runs on your machine. No API keys. No data leaving your Mac.
 ## Install
 
 ```fish
-git clone https://github.com/yourusername/llamy.git
+git clone https://github.com/kthrob/Llamy.git
 cd llamy
 fish setup.fish
 ```
