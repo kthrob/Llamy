@@ -20,7 +20,7 @@
 
 A [fish shell](https://fishshell.com/) function for **macOS Apple Silicon** that spins up a full local AI stack — [Ollama](https://ollama.com) + [Open WebUI](https://docs.openwebui.com/) — in the background with a single command, opens the UI in your browser, and leaves your terminal free.
 
-Everything runs on your machine. No API keys. No data leaving your Mac.
+Everything runs on your machine. Models are fully local. The optional ElevenLabs TTS integration is the only feature that calls an external API.
 
 ---
 
@@ -76,6 +76,39 @@ The choice is saved to `~/.config/llamy/default_model` and used whenever you run
 
 ---
 
+## Optional: ElevenLabs Text-to-Speech
+
+Open WebUI supports ElevenLabs for high-quality voice responses. Setup takes three steps.
+
+**1. Create credential files** (these live outside the repo and are never committed):
+
+```fish
+echo 'sk_your_api_key' > ~/.config/llamy/elevenlabs_api_key
+echo 'your_voice_id'   > ~/.config/llamy/elevenlabs_voice
+# optional — defaults to eleven_multilingual_v2
+echo 'eleven_turbo_v2_5' > ~/.config/llamy/elevenlabs_model
+```
+
+Get your API key from [elevenlabs.io/app/settings/api-keys](https://elevenlabs.io/app/settings/api-keys). Get voice IDs from [elevenlabs.io/voice-library](https://elevenlabs.io/voice-library) (the ID is in the URL when you click a voice).
+
+**2. Restart llamy** so it picks up the credentials:
+
+```fish
+llamy --stop && llamy
+```
+
+**3. Configure the Admin Panel** — this step is required and easy to miss.
+
+Open WebUI has two separate audio settings pages. The TTS engine dropdown in your **user settings** only shows "Default" and "Kokoro.js" — ElevenLabs does not appear there. You must configure it in the **Admin Panel**:
+
+> **[http://localhost:8080/admin/settings/audio](http://localhost:8080/admin/settings/audio)**
+
+On that page: set the TTS engine to **ElevenLabs**, enter your API key, select your voice from the dropdown that appears, and save.
+
+Once saved, go back to your user settings and leave the TTS engine on **Default** — Open WebUI will route TTS through ElevenLabs automatically.
+
+---
+
 ## Offline use
 
 After the first successful run, `llamy` works entirely without internet:
@@ -110,6 +143,10 @@ uvx --python 3.11 --with pip open-webui@latest --help
 |---|---|
 | `~/.config/fish/functions/llamy.fish` | The installed function |
 | `~/.config/llamy/default_model` | Your saved default model |
+| `~/.config/llamy/enabled_models` | Allowlist of models llamy can use |
+| `~/.config/llamy/elevenlabs_api_key` | ElevenLabs API key (optional, never committed) |
+| `~/.config/llamy/elevenlabs_voice` | ElevenLabs voice ID (optional) |
+| `~/.config/llamy/elevenlabs_model` | ElevenLabs model name (optional) |
 | `~/.open-webui/` | Open WebUI data and settings |
 | `~/.local/log/llamy-ollama.log` | Ollama server log |
 | `~/.local/log/llamy-webui.log` | Open WebUI log |
