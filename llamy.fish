@@ -22,6 +22,7 @@ function llamy --description "Start Ollama + Open WebUI in the background"
     set PID_FILE        "$LOG_DIR/llamy.pids"
     set OLLAMA_OWNED    "$LOG_DIR/llamy.ollama_owned"
     set WEBUI_URL       "http://localhost:8080"
+    set TTS_ENGINE_FILE "$CONFIG_DIR/tts_engine"
     set EL_API_KEY_FILE "$CONFIG_DIR/elevenlabs_api_key"
     set EL_VOICE_FILE   "$CONFIG_DIR/elevenlabs_voice"
     set EL_MODEL_FILE   "$CONFIG_DIR/elevenlabs_model"
@@ -136,6 +137,7 @@ function llamy --description "Start Ollama + Open WebUI in the background"
         printf "  %-22s %s\n" "--set"         "Interactively toggle which local models are enabled for llamy"
         printf "  %-22s %s\n" "--list"        "Show currently enabled models"
         printf "  %-22s %s\n" "--set-default" "Interactively pick the default model"
+        printf "  %-22s %s\n" "--tts-set"     "Choose TTS engine (Kokoro or ElevenLabs)"
         printf "  %-22s %s\n" "--stop"        "Stop Ollama and Open WebUI background processes"
         printf "  %-22s %s\n" "--logs"        "Tail the Ollama and Open WebUI log files (Ctrl-C to exit)"
         printf "  %-22s %s\n" "--help, -h"    "Show this help message"
@@ -152,6 +154,7 @@ function llamy --description "Start Ollama + Open WebUI in the background"
         echo (set_color --bold)"FILES"(set_color normal)
         printf "  %-38s %s\n" "$DEFAULT_FILE"    "Saved default model"
         printf "  %-38s %s\n" "$ENABLED_FILE"   "Enabled model allowlist"
+        printf "  %-38s %s\n" "$TTS_ENGINE_FILE" "Saved TTS engine choice (kokoro|elevenlabs|none)"
         printf "  %-38s %s\n" "$OLLAMA_LOG"     "Ollama server log"
         printf "  %-38s %s\n" "$WEBUI_LOG"      "Open WebUI log"
         printf "  %-38s %s\n" "$PID_FILE"       "PIDs of background processes"
@@ -164,6 +167,8 @@ function llamy --description "Start Ollama + Open WebUI in the background"
         echo "  Open WebUI is launched with --offline so it works without internet"
         echo "  once the uvx cache is warm (i.e. after the first successful run)."
         echo "  Ollama models are fully local after their initial pull."
+        echo "  ElevenLabs TTS requires configuring the Admin Panel after startup:"
+        echo "    http://localhost:8080/admin/settings/audio"
         echo ""
         return 0
     end
@@ -382,6 +387,97 @@ function llamy --description "Start Ollama + Open WebUI in the background"
         return 0
     end
 
+    # ── --tts-set ──────────────────────────────────────────────────────────
+
+    if test "$argv[1]" = "--tts-set"
+        set _current_tts ""
+        if test -f "$TTS_ENGINE_FILE"
+            set _current_tts (string trim -- (cat "$TTS_ENGINE_FILE" 2>/dev/null))
+        end
+
+        echo ""
+        echo (set_color --bold)"llamy TTS engine"(set_color normal)
+        echo ""
+
+        set _tts_options  "none"              "kokoro"                      "elevenlabs"
+        set _tts_labels   "None (text only)"  "Kokoro (local, built-in)"    "ElevenLabs (cloud, high quality)"
+
+        for i in (seq (count $_tts_options))
+            if test "$_tts_options[$i]" = "$_current_tts"
+                echo (set_color yellow)"  $i) $_tts_labels[$i]  ✓ current"(set_color normal)
+            else
+                echo "  $i) $_tts_labels[$i]"
+            end
+        end
+        echo ""
+
+        while true
+            read --prompt-str (set_color cyan)"[llamy]"(set_color normal)" Select (1-3): " choice
+            if string match -qr '^\d+$' -- $choice
+                and test $choice -ge 1
+                and test $choice -le 3
+                break
+            end
+            _llamy_err "Please enter 1, 2, or 3."
+        end
+
+        set _selected $_tts_options[$choice]
+        mkdir -p $CONFIG_DIR
+        echo $_selected > $TTS_ENGINE_FILE
+
+        if test "$_selected" = "elevenlabs"
+            set _existing_key ""
+            if test -f "$EL_API_KEY_FILE"
+                set _existing_key (string trim -- (cat "$EL_API_KEY_FILE" 2>/dev/null))
+            end
+            if test -z "$_existing_key"
+                read --prompt-str (set_color cyan)"[llamy]"(set_color normal)" ElevenLabs API key (sk_...): " _el_key
+                set _el_key (string trim -- "$_el_key")
+                if test -n "$_el_key"
+                    echo $_el_key > $EL_API_KEY_FILE
+                    chmod 600 $EL_API_KEY_FILE
+                    _llamy_ok "API key saved to $EL_API_KEY_FILE"
+                else
+                    _llamy_warn "No key entered — add it later: echo 'sk_...' > $EL_API_KEY_FILE"
+                end
+            else
+                _llamy_info "Using existing API key from $EL_API_KEY_FILE"
+            end
+
+            set _existing_voice ""
+            if test -f "$EL_VOICE_FILE"
+                set _existing_voice (string trim -- (cat "$EL_VOICE_FILE" 2>/dev/null))
+            end
+            if test -z "$_existing_voice"
+                _llamy_info "Find voice IDs at: https://elevenlabs.io/voice-library"
+                read --prompt-str (set_color cyan)"[llamy]"(set_color normal)" Voice ID (leave blank to skip): " _el_voice
+                set _el_voice (string trim -- "$_el_voice")
+                if test -n "$_el_voice"
+                    echo $_el_voice > $EL_VOICE_FILE
+                    _llamy_ok "Voice ID saved to $EL_VOICE_FILE"
+                else
+                    _llamy_warn "No voice ID entered — ElevenLabs will use your account default"
+                end
+            else
+                _llamy_info "Using existing voice ID from $EL_VOICE_FILE"
+            end
+
+            _llamy_ok "TTS engine set to: ElevenLabs"
+            _llamy_info "After starting, confirm settings in Admin Panel:"
+            _llamy_info "  http://localhost:8080/admin/settings/audio"
+
+        else if test "$_selected" = "kokoro"
+            _llamy_ok "TTS engine set to: Kokoro (local)"
+            _llamy_info "After starting, select 'Kokoro.js' in your user settings:"
+            _llamy_info "  http://localhost:8080/user/settings"
+
+        else
+            _llamy_ok "TTS disabled."
+        end
+
+        return 0
+    end
+
     # ── --stop ─────────────────────────────────────────────────────────────
 
     if test "$argv[1]" = "--stop"
@@ -475,9 +571,16 @@ function llamy --description "Start Ollama + Open WebUI in the background"
     #    --with pip works around the "No module named pip" bug in uv-isolated envs
     _llamy_info "Starting Open WebUI (logs → $WEBUI_LOG)..."
 
-    # Read optional ElevenLabs credentials from ~/.config/llamy/ (never committed to git)
+    # Resolve TTS engine: read persisted choice, fall back to implicit ElevenLabs if key exists
+    set _tts_engine ""
+    if test -f "$TTS_ENGINE_FILE"
+        set _tts_engine (string trim -- (cat "$TTS_ENGINE_FILE" 2>/dev/null))
+    else if test -f "$EL_API_KEY_FILE"
+        set _tts_engine "elevenlabs"
+    end
+
     set _el_env
-    if test -f "$EL_API_KEY_FILE"
+    if test "$_tts_engine" = "elevenlabs"
         set _el_api_key (string trim -- (cat "$EL_API_KEY_FILE" 2>/dev/null))
         if test -n "$_el_api_key"
             set -a _el_env "AUDIO_TTS_ENGINE=elevenlabs"
@@ -494,8 +597,14 @@ function llamy --description "Start Ollama + Open WebUI in the background"
                     set -a _el_env "AUDIO_TTS_VOICE=$_el_voice_id"
                 end
             end
-            _llamy_info "ElevenLabs TTS enabled (key from $EL_API_KEY_FILE)"
+            _llamy_info "TTS: ElevenLabs"
+        else
+            _llamy_warn "TTS set to ElevenLabs but no API key found — run: llamy --tts-set"
         end
+    else if test "$_tts_engine" = "kokoro"
+        _llamy_info "TTS: Kokoro (local) — select 'Kokoro.js' in user settings if not already set"
+    else
+        _llamy_info "TTS not configured — run: llamy --tts-set"
     end
 
     env DATA_DIR=$HOME/.open-webui \
@@ -529,9 +638,12 @@ function llamy --description "Start Ollama + Open WebUI in the background"
 
     _llamy_ok "Running in the background."
     _llamy_info "  Model:          $MODEL"
+    set _tts_label (test -n "$_tts_engine"; and echo "$_tts_engine"; or echo "not set — run: llamy --tts-set")
+    _llamy_info "  TTS:            $_tts_label"
     _llamy_info "  Enabled models: llamy --list"
     _llamy_info "  Logs:           llamy --logs"
     _llamy_info "  Stop:           llamy --stop"
     _llamy_info "  Change default: llamy --set-default"
+    _llamy_info "  Change TTS:     llamy --tts-set"
 
 end

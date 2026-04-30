@@ -78,9 +78,20 @@ The choice is saved to `~/.config/llamy/default_model` and used whenever you run
 
 ## Optional: ElevenLabs Text-to-Speech
 
-Open WebUI supports ElevenLabs for high-quality voice responses. Setup takes three steps.
+Open WebUI supports ElevenLabs for high-quality voice responses, or Kokoro for a fully local alternative. Use `--tts-set` to choose:
 
-**1. Create credential files** (these live outside the repo and are never committed):
+```fish
+llamy --tts-set
+# [llamy] TTS engine
+#
+#   1) None (text only)
+#   2) Kokoro (local, built-in)
+#   3) ElevenLabs (cloud, high quality)  ✓ current
+#
+# [llamy] Select (1-3):
+```
+
+Selecting **ElevenLabs** will prompt for your API key and voice ID, saving them to `~/.config/llamy/` (outside the repo, never committed). You can also set them manually:
 
 ```fish
 echo 'sk_your_api_key' > ~/.config/llamy/elevenlabs_api_key
@@ -89,9 +100,9 @@ echo 'your_voice_id'   > ~/.config/llamy/elevenlabs_voice
 echo 'eleven_turbo_v2_5' > ~/.config/llamy/elevenlabs_model
 ```
 
-Get your API key from [elevenlabs.io/app/settings/api-keys](https://elevenlabs.io/app/settings/api-keys). Get voice IDs from [elevenlabs.io/voice-library](https://elevenlabs.io/voice-library) (the ID is in the URL when you click a voice).
+Get your API key from [elevenlabs.io/app/settings/api-keys](https://elevenlabs.io/app/settings/api-keys). Get voice IDs from [elevenlabs.io/voice-library](https://elevenlabs.io/voice-library).
 
-**2. Restart llamy** so it picks up the credentials:
+**Restart llamy** after changing TTS:
 
 ```fish
 llamy --stop && llamy
@@ -144,6 +155,7 @@ uvx --python 3.11 --with pip open-webui@latest --help
 | `~/.config/fish/functions/llamy.fish` | The installed function |
 | `~/.config/llamy/default_model` | Your saved default model |
 | `~/.config/llamy/enabled_models` | Allowlist of models llamy can use |
+| `~/.config/llamy/tts_engine` | Saved TTS engine choice (`kokoro`, `elevenlabs`, `none`) |
 | `~/.config/llamy/elevenlabs_api_key` | ElevenLabs API key (optional, never committed) |
 | `~/.config/llamy/elevenlabs_voice` | ElevenLabs voice ID (optional) |
 | `~/.config/llamy/elevenlabs_model` | ElevenLabs model name (optional) |

@@ -81,6 +81,7 @@ On first run, Ollama will pull the model from the internet. After that, everythi
 | `~/.config/fish/functions/llamy.fish` | The installed function |
 | `~/.config/llamy/default_model` | Persisted default model name |
 | `~/.config/llamy/enabled_models` | Allowlist of models llamy can use |
+| `~/.config/llamy/tts_engine` | Persisted TTS engine choice: `kokoro`, `elevenlabs`, or `none` |
 | `~/.config/llamy/elevenlabs_api_key` | ElevenLabs API key (optional, never committed to git) |
 | `~/.config/llamy/elevenlabs_voice` | ElevenLabs voice ID (optional) |
 | `~/.config/llamy/elevenlabs_model` | ElevenLabs model override (optional, default: `eleven_multilingual_v2`) |
