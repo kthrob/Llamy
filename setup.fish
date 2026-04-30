@@ -143,7 +143,11 @@ end
 
 header "Installing llamy"
 
-set FISH_FUNCTIONS "$HOME/.config/fish/functions"
+if test -n "$__fish_config_dir"
+    set FISH_FUNCTIONS "$__fish_config_dir/functions"
+else
+    set FISH_FUNCTIONS "$HOME/.config/fish/functions"
+end
 mkdir -p $FISH_FUNCTIONS
 
 set DEST "$FISH_FUNCTIONS/llamy.fish"
@@ -155,6 +159,12 @@ chmod +x $DEST
 or die "Failed to chmod $DEST"
 
 ok "llamy.fish installed → $DEST"
+
+if fish -c "type -q llamy"
+    ok "llamy command is available in Fish"
+else
+    die "llamy is not discoverable in Fish after install. Check your fish function path and rerun setup."
+end
 
 # ── 7. Warm the uvx cache (optional but makes first offline run faster) ───────
 
