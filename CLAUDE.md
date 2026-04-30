@@ -12,7 +12,9 @@ The stack runs entirely locally. No cloud API keys, no data leaving your machine
 |---|---|
 | `llamy.fish` | The fish function — this is the main deliverable |
 | `setup.fish` | Installer: checks/installs dependencies and drops `llamy.fish` into the right place |
-| `CLAUDE.md` | This file |
+| `CLAUDE.md` | This file — context for agents |
+| `README.md` | Human-facing documentation |
+| `BACKLOG.md` | Planned features, improvements, and bug fixes (see below) |
 
 ---
 
@@ -101,10 +103,56 @@ uvx --python 3.11 --with pip open-webui@latest --help
 
 ---
 
-## Notes for Claude Code
+## Notes for agents
 
 - **Do not modify `CLAUDE.md` without also updating `setup.fish` and `llamy.fish`** if the change affects installation steps or usage.
 - The function is self-contained in `llamy.fish`. All configuration paths are defined at the top of the `llamy` function body — edit there if defaults need changing.
 - `setup.fish` is idempotent — safe to re-run at any time.
 - Fish shell nested functions (the `_llamy_*` helpers) are defined inside the outer `llamy` function to avoid polluting the global namespace.
 - Open WebUI is intentionally run via `uvx` rather than a pinned venv so updates require no manual environment management — re-warming the cache is sufficient.
+
+---
+
+## Backlog
+
+Planned work lives in [`BACKLOG.md`](./BACKLOG.md). It is the authoritative source for what needs doing in this repo — bugs, features, and improvements.
+
+### How the backlog works
+
+Each task in `BACKLOG.md` has a status, a unique ID (`LLAMY-N`), metadata, a full description, implementation notes, and acceptance criteria. The format is designed so an agent can open the file, pick up a task, implement it, and mark it done — without needing additional context from a human.
+
+### Agent workflow for backlog tasks
+
+1. **Read `BACKLOG.md` first.** Before starting any work session, scan for `[PLANNED]` or `[IN PROGRESS]` tasks relevant to the work being requested.
+2. **Claim the task.** Change its status from `[PLANNED]` to `[IN PROGRESS]` and update the `Updated` date before touching any code.
+3. **Follow the implementation notes.** Each task includes specific file locations, known edge cases, and decisions already made — use them.
+4. **Mark done and move.** When complete, change status to `[DONE]` and move the task block to the `## Completed` section at the bottom of `BACKLOG.md`.
+5. **Add new tasks as discovered.** If work reveals a new bug or improvement, add it to `BACKLOG.md` with the next sequential ID rather than silently fixing or ignoring it.
+
+### Adding a task
+
+Use this minimal template and append it to the `## Planned` section, maintaining priority order (high → medium → low):
+
+```markdown
+### [PLANNED] Short imperative title (#LLAMY-N)
+
+- **ID**: LLAMY-N
+- **Type**: bug | feature | improvement | refactor
+- **Priority**: high | medium | low
+- **Effort**: small | medium | large
+- **Added**: YYYY-MM-DD
+- **Updated**: YYYY-MM-DD
+- **Author**: name or "agent"
+
+#### Problem / Motivation
+...
+
+#### Proposed Solution
+...
+
+#### Implementation Notes
+...
+
+#### Acceptance Criteria
+- [ ] ...
+```

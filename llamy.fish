@@ -22,6 +22,9 @@ function llamy --description "Start Ollama + Open WebUI in the background"
     set PID_FILE        "$LOG_DIR/llamy.pids"
     set OLLAMA_OWNED    "$LOG_DIR/llamy.ollama_owned"
     set WEBUI_URL       "http://localhost:8080"
+    set EL_API_KEY_FILE "$CONFIG_DIR/elevenlabs_api_key"
+    set EL_VOICE_FILE   "$CONFIG_DIR/elevenlabs_voice"
+    set EL_MODEL_FILE   "$CONFIG_DIR/elevenlabs_model"
 
     # ── helpers ────────────────────────────────────────────────────────────
 
@@ -91,9 +94,7 @@ function llamy --description "Start Ollama + Open WebUI in the background"
             kill $_tmp_ollama_pid 2>/dev/null
         end
 
-        for model in $models
-            echo $model
-        end
+        printf "%s\n" $models
     end
 
     function _llamy_pull_model --argument-names model_name
@@ -149,11 +150,14 @@ function llamy --description "Start Ollama + Open WebUI in the background"
         echo "  llamy --logs           # watch logs in real time"
         echo ""
         echo (set_color --bold)"FILES"(set_color normal)
-        printf "  %-38s %s\n" "$DEFAULT_FILE" "Saved default model"
-        printf "  %-38s %s\n" "$ENABLED_FILE" "Enabled model allowlist"
-        printf "  %-38s %s\n" "$OLLAMA_LOG"   "Ollama server log"
-        printf "  %-38s %s\n" "$WEBUI_LOG"    "Open WebUI log"
-        printf "  %-38s %s\n" "$PID_FILE"     "PIDs of background processes"
+        printf "  %-38s %s\n" "$DEFAULT_FILE"    "Saved default model"
+        printf "  %-38s %s\n" "$ENABLED_FILE"   "Enabled model allowlist"
+        printf "  %-38s %s\n" "$OLLAMA_LOG"     "Ollama server log"
+        printf "  %-38s %s\n" "$WEBUI_LOG"      "Open WebUI log"
+        printf "  %-38s %s\n" "$PID_FILE"       "PIDs of background processes"
+        printf "  %-38s %s\n" "$EL_API_KEY_FILE" "ElevenLabs API key (optional)"
+        printf "  %-38s %s\n" "$EL_VOICE_FILE"  "ElevenLabs voice ID (optional)"
+        printf "  %-38s %s\n" "$EL_MODEL_FILE"  "ElevenLabs model (optional, default: eleven_multilingual_v2)"
         echo ""
         echo (set_color --bold)"NOTES"(set_color normal)
         echo "  If '$ENABLED_FILE' exists, only listed models can be launched with llamy."
@@ -257,7 +261,7 @@ function llamy --description "Start Ollama + Open WebUI in the background"
                 if test (count $enabled_models) -gt 0
                     printf "%s\n" $enabled_models > $ENABLED_FILE
                 else
-                    cat /dev/null > $ENABLED_FILE
+                    printf "" > $ENABLED_FILE
                 end
 
                 _llamy_ok "Saved "(count $enabled_models)" enabled model(s)."
@@ -269,7 +273,7 @@ function llamy --description "Start Ollama + Open WebUI in the background"
                 set enabled_models
                 _llamy_ok "Disabled all listed models."
             else if string match -qri '^pull\s+\S+$' -- $choice
-                set model_to_pull (string replace -r '^[Pp][Uu][Ll][Ll]\s+' '' -- $choice)
+                set model_to_pull (string replace -ri '^pull\s+' '' -- $choice)
                 _llamy_info "Pulling model '$model_to_pull'..."
                 if _llamy_pull_model $model_to_pull
                     set models (_llamy_local_models)
@@ -422,35 +426,22 @@ function llamy --description "Start Ollama + Open WebUI in the background"
     end
 
     # Use passed model, or fall back to saved/builtin default
+    if test $enabled_file_exists -eq 1; and test (count $enabled_models) -eq 0
+        _llamy_err "No models are enabled. Run: llamy --set"
+        return 1
+    end
+
     if test (count $argv) -gt 0
         set MODEL $argv[1]
-
-        if test $enabled_file_exists -eq 1
-            if test (count $enabled_models) -eq 0
-                _llamy_err "No models are enabled. Run: llamy --set"
-                return 1
-            end
-
-            if not contains -- $MODEL $enabled_models
-                _llamy_err "Model '$MODEL' is not enabled for llamy. Run: llamy --set"
-                return 1
-            end
+        if test $enabled_file_exists -eq 1; and not contains -- $MODEL $enabled_models
+            _llamy_err "Model '$MODEL' is not enabled for llamy. Run: llamy --set"
+            return 1
         end
     else
         set MODEL (_llamy_saved_default $DEFAULT_FILE $BUILTIN_DEFAULT)
-
-        if test $enabled_file_exists -eq 1
-            if test (count $enabled_models) -eq 0
-                _llamy_err "No models are enabled. Run: llamy --set"
-                return 1
-            end
-
-            if not contains -- $MODEL $enabled_models
-                set MODEL $enabled_models[1]
-                _llamy_warn "Saved default is not enabled; using first enabled model: $MODEL"
-            else
-                _llamy_info "Using default model: $MODEL"
-            end
+        if test $enabled_file_exists -eq 1; and not contains -- $MODEL $enabled_models
+            set MODEL $enabled_models[1]
+            _llamy_warn "Saved default is not enabled; using first enabled model: $MODEL"
         else
             _llamy_info "Using default model: $MODEL"
         end
@@ -483,10 +474,36 @@ function llamy --description "Start Ollama + Open WebUI in the background"
     # 3. Launch Open WebUI via uvx
     #    --with pip works around the "No module named pip" bug in uv-isolated envs
     _llamy_info "Starting Open WebUI (logs → $WEBUI_LOG)..."
-    DATA_DIR=$HOME/.open-webui \
-    OLLAMA_BASE_URL=http://localhost:11434 \
+
+    # Read optional ElevenLabs credentials from ~/.config/llamy/ (never committed to git)
+    set _el_env
+    if test -f "$EL_API_KEY_FILE"
+        set _el_api_key (string trim -- (cat "$EL_API_KEY_FILE" 2>/dev/null))
+        if test -n "$_el_api_key"
+            set -a _el_env "AUDIO_TTS_ENGINE=elevenlabs"
+            set -a _el_env "AUDIO_TTS_API_KEY=$_el_api_key"
+            set _el_model "eleven_multilingual_v2"
+            if test -f "$EL_MODEL_FILE"
+                set _el_model_val (string trim -- (cat "$EL_MODEL_FILE" 2>/dev/null))
+                if test -n "$_el_model_val"; set _el_model "$_el_model_val"; end
+            end
+            set -a _el_env "AUDIO_TTS_MODEL=$_el_model"
+            if test -f "$EL_VOICE_FILE"
+                set _el_voice_id (string trim -- (cat "$EL_VOICE_FILE" 2>/dev/null))
+                if test -n "$_el_voice_id"
+                    set -a _el_env "AUDIO_TTS_VOICE=$_el_voice_id"
+                end
+            end
+            _llamy_info "ElevenLabs TTS enabled (key from $EL_API_KEY_FILE)"
+        end
+    end
+
+    env DATA_DIR=$HOME/.open-webui \
+        OLLAMA_BASE_URL=http://localhost:11434 \
+        $_el_env \
         uvx --python 3.11 --with pip --offline open-webui@latest serve \
         >> $WEBUI_LOG 2>&1 &
+
     set webui_pid $last_pid
 
     # 4. Persist PIDs for --stop
