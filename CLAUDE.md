@@ -81,12 +81,9 @@ On first run, Ollama will pull the model from the internet. After that, everythi
 | `~/.config/fish/functions/llamy.fish` | The installed function |
 | `~/.config/llamy/default_model` | Persisted default model name |
 | `~/.config/llamy/enabled_models` | Allowlist of models llamy can use |
-| `~/.config/llamy/tts_engine` | Persisted TTS engine choice: `kokoro`, `elevenlabs`, or `none` |
-| `~/.config/llamy/elevenlabs_api_key` | ElevenLabs API key (optional, never committed to git) |
-| `~/.config/llamy/elevenlabs_voice` | ElevenLabs voice ID (optional) |
-| `~/.config/llamy/elevenlabs_model` | ElevenLabs model override (optional, default: `eleven_multilingual_v2`) |
+| `~/.config/llamy/tts_engine` | Persisted TTS engine choice: `kokoro` or `none` |
 | `~/.open-webui/` | Open WebUI data directory |
-| `~/.open-webui/webui.db` | SQLite DB storing Open WebUI settings including saved TTS config |
+| `~/.open-webui/webui.db` | SQLite DB storing Open WebUI settings |
 | `~/.local/log/llamy-ollama.log` | Ollama server log |
 | `~/.local/log/llamy-webui.log` | Open WebUI log |
 | `~/.local/log/llamy.pids` | PIDs of background processes |
@@ -106,33 +103,6 @@ To update Open WebUI itself, run it once without `--offline` to pull the latest 
 ```fish
 uvx --python 3.11 --with pip open-webui@latest --help
 ```
-
----
-
-## ElevenLabs TTS — gotchas for agents
-
-Open WebUI's TTS configuration has a non-obvious two-level structure that has caused bugs before. Know this before touching anything audio-related.
-
-**Two separate audio settings pages exist:**
-
-| Page | URL | TTS engine options |
-|---|---|---|
-| User settings | `/user/settings` | Default, Kokoro.js only |
-| Admin settings | `/admin/settings/audio` | Default, OpenAI, ElevenLabs, Azure, Mistral |
-
-ElevenLabs does **not** appear in the user settings dropdown. It must be configured in the Admin Panel at `http://localhost:8080/admin/settings/audio`. Users should leave their personal TTS setting on "Default", which delegates to whatever the admin has configured.
-
-**How credentials flow:**
-1. `llamy` reads `~/.config/llamy/elevenlabs_api_key` (and optionally `elevenlabs_voice`, `elevenlabs_model`) at launch
-2. These are passed as `AUDIO_TTS_ENGINE`, `AUDIO_TTS_API_KEY`, `AUDIO_TTS_MODEL`, `AUDIO_TTS_VOICE` env vars to the `uvx` process
-3. Open WebUI picks them up at startup and saves them to `~/.open-webui/webui.db`
-4. Once saved to the DB, the DB value takes precedence over env vars on subsequent restarts — so the Admin Panel is the authoritative config source after first run
-
-**If TTS gives "Invalid voice id":**
-- The voice list is fetched live from `https://api.elevenlabs.io/v1/voices` on every TTS request to validate the voice ID
-- If that call returns 401, the voice list is empty and every voice ID fails — the error message is misleading
-- Verify the key: `curl -s -o /dev/null -w "%{http_code}" -H "xi-api-key: YOUR_KEY" https://api.elevenlabs.io/v1/voices` should return 200
-- To update a stale key in the DB without restarting: `sqlite3 ~/.open-webui/webui.db "UPDATE config SET data = json_set(data, '$.audio.tts.api_key', 'NEW_KEY')"`
 
 ---
 

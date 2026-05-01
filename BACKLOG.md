@@ -81,8 +81,8 @@ Other tasks or external requirements this depends on.
 The current stack runs Open WebUI via `uvx open-webui@latest`. This works but has practical friction:
 
 - The cached version is frozen until manually re-warmed (`uvx --python 3.11 --with pip open-webui@latest --help`)
-- Environment variables must be threaded through fish list expansion into `env`, which is fragile (we had to fall back to editing the sqlite3 DB directly during ElevenLabs setup)
-- No standard `.env` file support — secrets need the bespoke `~/.config/llamy/` credential file approach
+- Environment variables must be threaded through fish list expansion into `env`, which is fragile
+- No standard `.env` file support — config needs the bespoke `~/.config/llamy/` file approach
 - `--offline` makes the package manager offline, not the app — the distinction confuses troubleshooting
 - There is no pinned version; `@latest` can silently break between runs
 
@@ -96,7 +96,7 @@ The Docker variant would:
 - Pull `ghcr.io/open-webui/open-webui:main` (or a pinned tag)
 - Run the container via OrbStack's `docker` CLI
 - Mount `~/.open-webui` as the data volume (same path as today — DB and uploads are preserved)
-- Pass ElevenLabs and other secrets via a `~/.config/llamy/.env` file (natively supported by `docker run --env-file`)
+- Pass config via a `~/.config/llamy/.env` file (natively supported by `docker run --env-file`)
 - Connect to the host Ollama instance via `host.docker.internal:11434` or OrbStack's host networking
 
 #### Research Questions (answer before implementing)
@@ -111,7 +111,7 @@ These must be answered by reading OrbStack and Open WebUI documentation, and by 
 
 4. **Data persistence.** Confirm that mounting `~/.open-webui:/app/backend/data` preserves the existing sqlite DB, uploaded files, and vector DB — so switching from uvx to Docker doesn't lose any settings or chat history.
 
-5. **`.env` file handling.** Does `docker run --env-file ~/.config/llamy/.env` handle the ElevenLabs credentials correctly? Confirm the key names (`AUDIO_TTS_ENGINE`, `AUDIO_TTS_API_KEY`, etc.) are the same in the Docker image as in the uvx-run version.
+5. **`.env` file handling.** Does `docker run --env-file ~/.config/llamy/.env` handle TTS env vars correctly? Confirm the key names (`AUDIO_TTS_ENGINE`, `AUDIO_TTS_MODEL`, etc.) are the same in the Docker image as in the uvx-run version.
 
 6. **Pinned vs latest.** Should the variant track `:main` (rolling), `:latest` (stable releases), or a pinned tag? What is the update workflow for each?
 
@@ -127,7 +127,7 @@ These must be answered by reading OrbStack and Open WebUI documentation, and by 
 
 - Implement as `llamy-docker.fish`, installed alongside `llamy.fish` — not as a replacement
 - Use the same `~/.config/llamy/` config directory and the same `~/.open-webui/` data directory
-- Use `~/.config/llamy/.env` for all secrets passed to the container (already gitignored via `.env.*` in `.gitignore`)
+- Use `~/.config/llamy/.env` for all env vars passed to the container (already gitignored via `.env.*` in `.gitignore`)
 - Keep `llamy-docker` command surface identical to `llamy` where possible (`--stop`, `--logs`, `--help`) so it can be compared without re-learning
 - The `--logs` command should tail the container log: `docker logs -f open-webui`
 - `--stop` should run `docker stop open-webui && docker rm open-webui`
@@ -138,7 +138,6 @@ These must be answered by reading OrbStack and Open WebUI documentation, and by 
 
 - [ ] All research questions above answered and documented in this task before any code is written
 - [ ] `llamy-docker.fish` installed and working alongside `llamy.fish` without conflicts
-- [ ] ElevenLabs TTS works via `--env-file` with no sqlite3 workarounds needed
 - [ ] `~/.open-webui/` data (DB, uploads) is preserved when switching between variants
 - [ ] `llamy-docker --stop/--logs/--help` work correctly
 - [ ] Cold start time and image size documented in the task for future reference
@@ -287,4 +286,24 @@ end
 
 <!-- Completed tasks are moved here. Keep them for reference. -->
 
-*(none yet)*
+### [DONE] Remove ElevenLabs TTS implementation (#LLAMY-3)
+
+- **ID**: LLAMY-3
+- **Type**: refactor
+- **Priority**: high
+- **Effort**: small
+- **Added**: 2026-04-30
+- **Updated**: 2026-04-30
+- **Author**: agent
+
+#### Problem / Motivation
+
+ElevenLabs is a cloud TTS service that conflicts with the project's fully-local, offline-first goal. The voice ID mismatch error (ElevenLabs voice ID passed to Kokoro) is a symptom of unnecessary complexity. The user wants to keep everything local with Kokoro only.
+
+#### Acceptance Criteria
+
+- [x] `llamy --tts-set` shows only `none` and `kokoro` (no ElevenLabs option)
+- [x] No ElevenLabs env vars are set at startup
+- [x] `--help` and all docs contain no ElevenLabs references
+- [x] Open WebUI DB has no ElevenLabs credentials or engine config
+- [x] `llamy` starts cleanly with Kokoro
